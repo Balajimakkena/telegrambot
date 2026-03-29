@@ -1,64 +1,50 @@
-print("Starting bot...")
-
 import requests
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
-import openai
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+
 BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 OMDB_API_KEY = "YOUR_OMDB_API_KEY"
-OPENAI_API_KEY = "YOUR_OPENAI_API_KEY"
 
 
-openai.api_key = OPENAI_API_KEY
-
-# 🎬 Movie Info Function (OMDb)
-def get_movie(movie_name):
-    url = f"http://www.omdbapi.com/?t={movie_name}&apikey={OMDB_API_KEY}"
-    data = requests.get(url).json()
-
-    if data["Response"] == "True":
-        title = data["Title"]
-        rating = data["imdbRating"]
-        overview = data["Plot"]
-        poster = data["Poster"]
-
-        return title, rating, overview, poster
-    return None
-
-# 🤖 AI Recommendation
-def recommend(movie_name):
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": f"Suggest 5 movies similar to {movie_name}"}]
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Hello! Send me any movie name and I will give you details like release year, director, rating, and cast."
     )
-    return response['choices'][0]['message']['content']
 
-# 🎬 Handle Messages
-async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
 
-    movie = get_movie(text)
+async def movie_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    movie_name = update.message.text
 
-    if movie:
-        title, rating, overview, poster = movie
+    url = f"http://www.omdbapi.com/?t={movie_name}&apikey={OMDB_API_KEY}"
+    response = requests.get(url)
+    movie_data = response.json()
 
-        reply = f"🎬 {title}\n⭐ Rating: {rating}\n\n📖 {overview}"
+    if movie_data.get("Response") == "True":
+        title = movie_data.get("Title", "N/A")
+        year = movie_data.get("Year", "N/A")
+        director = movie_data.get("Director", "N/A")
+        actors = movie_data.get("Actors", "N/A")
+        rating = movie_data.get("imdbRating", "N/A")
+        plot = movie_data.get("Plot", "N/A")
 
-        # Send poster + info
-        if poster != "N/A":
-            await update.message.reply_photo(photo=poster, caption=reply)
-        else:
-            await update.message.reply_text(reply)
+        message = (
+            f"🎬 Movie: {title}\n"
+            f"📅 Release Year: {year}\n"
+            f"🎥 Director: {director}\n"
+            f"⭐ IMDb Rating: {rating}\n"
+            f"👥 Cast: {actors}\n\n"
+            f"📝 Plot: {plot}"
+        )
 
-        # AI Recommendations
-        recs = recommend(title)
-        await update.message.reply_text(f"🤖 Recommendations:\n{recs}")
+        await update.message.reply_text(message)
     else:
-        await update.message.reply_text("❌ Movie not found")
+        await update.message.reply_text("Movie not found. Please send a correct movie name.")
 
-# ▶️ Start Bot
+
 app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(MessageHandler(filters.TEXT, handle))
-print("Bot is running...")
 
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, movie_details))
+
+print("Bot is running...")
 app.run_polling()
